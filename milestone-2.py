@@ -6,6 +6,8 @@ import random
 INPUT_TEXT = {  'H':"Hearts",'D':"Diamonds",'S':"Spades",'C':"Clubs",
                 'J':"Jack",'Q':"Queen",'K':"King",'A':"Ace",
                 'ace':"Would you like your Ace to count for 1 or 11 points? Enter 1 or 11: ",
+                'bet':"%s, please enter a bet between 1 and %s: ", # player balance
+                'hit':"%s, would you like a hit? Y or N: " # player name
              }
 
 class Money(object):
@@ -19,6 +21,7 @@ class Money(object):
     def sub_balance(self,amount):
         self.balance -= amount
 
+
 class Deck(object):
 
     suit = ['H','D','S','C']
@@ -30,6 +33,9 @@ class Deck(object):
         for s in self.suit:
             for r in self.rank:
                 self.deck.append((s,r))
+
+    def reshuffle(self):
+        self.__init__()
 
     def get_card(self):
         # grab random card from deck
@@ -52,8 +58,8 @@ class Deck(object):
             i += 1
         return cards
 
+
 class Points(object):
-    global INPUT_TEXT
 
     def __init__(self, dealer=False):
         self.points = 0
@@ -89,13 +95,16 @@ class Points(object):
                             else:
                                 continue
 
+
 class Player(Money, Points):
 
-    def __init__(self, bank, dealer=False):
+    def __init__(self, bank, name, dealer=False):
         Money.__init__(self, bank)
         Points.__init__(self, dealer)
         self.hand = []
-        self.hold = False
+        self.bet = 0
+        self.stand = False
+        self.name = name
 
     def add_card(self,cards):
         for c in cards:
@@ -105,51 +114,117 @@ class Player(Money, Points):
     def clear_hand(self):
         del self.hand[:]
 
-class Round(object):
 
-    def __init__(self,player_object):
-        self.player = player_object
-        # go through a round of BJ:
-        # if player.dealer==False, player lays bet
-        # if Player takes card, deal card
-        # else Player.hold = True
-        # winner/loser is determined
+class Bet(object):
+
+    def place_bet(self,player):
+        if player.dealer == False:
+            while True:
+                try:
+                    the_bet = int(raw_input(INPUT_TEXT['bet']%(player.name,str(player.balance))))
+                    if the_bet >= 1 and the_bet <= player.balance:
+                        player.bet = the_bet
+                        break
+                except:
+                    continue
+
+    def settle_bet(self,player,condition='T'):
+        if condition == 'W':
+            player.balance = player.bet + player.balance
+        elif condition == "L":
+            player.balance = player.balance - player.bet
+        player.bet = 0
+
+
+class Turn(object):
+
+    def __init__(self,deck,player):
+        # add condition for double(double bet, take card, stand)
+        # add condition for surrender(lose 1/2 bet and forfeit hand)
+        if player.dealer == False:
+            # Take another card or stand
+            while True:
+                response = raw_input(INPUT_TEXT['hit']%(player.name)).upper()
+                if response == "Y":
+                    player.add_card(deck.deal_card(1))
+                    break
+                elif response == "N":
+                    player.stand = True
+                    break
+        elif player.dealer == True:
+            if player.points < 17:
+                player.add_card(deck.deal_card(1))
+            else:
+                player.stand = True
+
+
+class WinLose(object):
+
+    def check_cond(self):
+        pass
+            # winner/loser is determined
             # if 21: win message
             # elif over 21: lose message
 
+
 class Table(object):
-    pass
-    # draw visual elements to show player
+
+    def __init__(self,players,bets):
+        self.player = players
+        self.bets = bets
+
+    def draw(self):
+        name = self.player[1].name
+        print "-------------------------"
+        print name + " balance: ",self.player[1].balance
+        print name + " has bet: ",self.player[1].bet
+        print name + " hand: ",self.player[1].hand
+        print name + " points: ",self.player[1].points
+        if self.player[1].stand == True:
+            print name + " is standing."
+        print "-------------------------"
+        print "Dealer points: ",self.player[0].points
+        print "Dealer hand: ",self.player[0].hand
+        print "-------------------------"
+
 
 class Main():
 
-    deck = Deck()
-    player1 = Player(50)
-    dealer = Player(5000,True)
+    # Player objects are stored in list
+    player = [Player(0,"Dealer",True)]
 
     def __init__(self):
-        print "This is Blackjack. It's a card game."
+        self.deck = Deck()
+        self.bets = Bet()
+        t = Table(self.player,self.bets)
+
+        # Set up the players
+        num_players = 1  # can come back later to add input for multiplayer
+        i = 0
+        while i < num_players:
+            name = raw_input("Please enter your name: ")
+            self.player.append(Player(50,name))
+            i += 1
+        # Start the game
+        print "Welcome, %s. This is Blackjack. It's a card game." %(self.player[1].name)
         # deal initial 2 cards to players
-        self.dealer.add_card(self.deck.deal_card(2))
-        self.player1.add_card(self.deck.deal_card(2))
+        self.player[0].add_card(self.deck.deal_card(2))
+        self.player[1].add_card(self.deck.deal_card(2))
+        t.draw()
+        # Place bets before rounds begin
+        for p in self.player:
+            self.bets.place_bet(p)
+        # Play through rounds until every player stands
+        stand_count = 0
+        while stand_count < num_players:
+            for p in self.player:
+                if p.stand == False:
+                    Turn(self.deck,p)
+                    if p.dealer == False:
+                        t.draw()
+                else:
+                    stand_count += 1
+            #WinLose()
 
-        # while self.player1.hold == False and self.dealer.hold == False:
-            # Table.draw()
-            # Round()
-
-        #### Testing out methods
-        print "Player 1 balance: ",self.player1.balance
-        print "Player 1 points: ",self.player1.points
-        print "Player 1 hand: ",self.player1.hand
-        print "-------------------------"
-        self.player1.add_card(self.deck.deal_card(1))
-        print "Player 1 hand: ",self.player1.hand
-        print "Player 1 points: ",self.player1.points
-        print "-------------------------"
-        print "Dealer balance: ",self.dealer.balance
-        print "Dealer points: ",self.dealer.points
-        print "Dealer hand: ",self.dealer.hand
-        print "-------------------------"
-        print "Deck: ",self.deck.deck
 
 Main()
