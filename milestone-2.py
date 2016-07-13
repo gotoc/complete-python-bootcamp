@@ -5,7 +5,7 @@ import random
 
 INPUT_TEXT = {  'line':"-------------------------",
                 'line2':"+++++++++++++++++++++++++",
-                'welcome':"Welcome, %s. This is Blackjack. It's a card game.", # player.name
+                'welcome':"Welcome to the game, %s.", # player.name
                 'ask_name':"Hello, Player %s. Please enter your name: ", # num_players
                 'ace':"Would you like your Ace to count for 1 or 11 points? Enter 1 or 11: ",
                 'bet':"%s, please enter a bet between 1 and %s: ", # player.name, player.balance
@@ -16,7 +16,7 @@ INPUT_TEXT = {  'line':"-------------------------",
                 'balance':"%s's balance: $%s", # player.name, player.balance
                 'zero_balance':"Unfortunately, you have a balance of $0, so the game must end.",
                 'replay':"Do you want to play again? (y or n): ",
-                'goodbye':"Goodbye ... foolish human!"
+                'goodbye':"Goodbye ... foolish human!\n\n"
                 }
 CARD_TEXT = {   'H':"Hearts",'D':"Diamonds",'S':"Spades",'C':"Clubs",
                 'J':"Jack",'Q':"Queen",'K':"King",'A':"Ace",
@@ -107,11 +107,18 @@ class Player(Money, Points):
     def __init__(self, bank, name, dealer=False):
         Money.__init__(self, bank)
         Points.__init__(self, dealer)
+        # The player's name.
         self.name = name
+        # List of tuples representing cards dealt to player
         self.hand = []
+        # Total money the player wishes to bet on a turn
         self.bet = 0
+        # Values "under" - player can still play, "over" - player has busted, "blackjack" - player scored 21 points
         self.state = "under"
+        # If true, the players turn is ended
         self.stand = False
+        # If true, the player doesn't see a welcome message.
+        self.intro = False
 
     def add_card(self,cards,auto_ace=False):
         '''Add an amount of cards to the player's hand.'''
@@ -193,6 +200,12 @@ class Table(object):
             print "* %s is standing! *"%(player_obj.name)
         print INPUT_TEXT['line']
 
+    def draw_welcome(self,player_obj):
+        print INPUT_TEXT['line2']
+        if player_obj.dealer == False:
+            print INPUT_TEXT['welcome']%(player_obj.name)
+        print INPUT_TEXT['line2']
+
     def draw_round_end(self,players):
         '''Output the information for the end of a round.'''
         # End the round
@@ -230,12 +243,14 @@ class Game(object):
             if p.dealer == True:
                 p.add_card(self.deck.deal_card(2))
             else:
-                print INPUT_TEXT['welcome']%(p.name)
+                if p.intro == False:
+                    self.t.draw_welcome(p)
                 # Place bets before rounds begin
                 self.bets.place_bet(p)
                 self.t.draw_money(p)
                 # deal initial 2 cards to players
                 p.add_card(self.deck.deal_card(2),True)
+                self.t.draw_hand(p)
         # Play through a round until every player stands
         for p in self.player:
             # only bother with turn player qualifies
@@ -288,11 +303,14 @@ class Game(object):
         # Give option to replay the game
         while True:
             again = raw_input(INPUT_TEXT['replay']).upper()
+            print INPUT_TEXT['line']
             if again == "Y":
                 for p in self.player:
                     p.clear()
+                    p.intro = True
                 self.deck.reshuffle()
-                self.round()
+                self.__init__(self.player)
+                break
             else:
                 self.exit_game()
                 break
@@ -303,10 +321,10 @@ class Game(object):
         # add condition for surrender(lose 1/2 bet and forfeit hand)
         # Manual turn for human players
         if player.dealer == False:
-            self.t.draw_hand(player)
             while True:
                 if player.stand == False:
                     response = raw_input(INPUT_TEXT['hit']%(player.name)).upper()
+                    print INPUT_TEXT['line']
                     if response == "Y":
                         player.add_card(self.deck.deal_card(1))
                         self.t.draw_hand(player)
