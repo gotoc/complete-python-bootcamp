@@ -14,12 +14,13 @@
 #      + returns results for both single words and complete phrase (ie, "love", "you", and "love you")
 #      + UI in cli only, no web or widget
 #   * Two tables for normalized storage
-#      + table: words(id INT PRIMARY KEY, word TEXT)
-#      + table: words_loc(id INT PRIMARY KEY, words_id INT, url TEXT, loc INT)
+#      + table: CREATE TABLE words(id INTEGER PRIMARY KEY AUTOINCREMENT, word TEXT);
+#      + table: CREATE TABLE words_loc(id INTEGER PRIMARY KEY AUTOINCREMENT, words_id INTEGER, url TEXT, loc INTEGER);
 
 import urllib2
 import sqlite3
 import re
+
 
 class FileLoad(object):
 
@@ -29,7 +30,6 @@ class FileLoad(object):
         try:
             response = urllib2.urlopen(file_loc)
             html = response.read()
-            print "%s was successfully added to index."%(file_loc)
         except:
             html = False
             print "%s is not a valid URL."%(file_loc)
@@ -38,18 +38,48 @@ class FileLoad(object):
             clean_html = re.sub(r'<script[\s\S]+?>[\s\S]+?<\/script>','',html)
             clean_html = re.sub(r'<style[\s\S]+?>[\s\S]+?<\/style>','',clean_html)
             clean_html = re.sub(r'<[^<]+?>', '', clean_html)
-            # remove all special characters except "-" to help build clean word list
-            real_clean_html = re.sub(r'[^a-z\'\s-]', '', clean_html.lower())
+            # remove all special characters except single - and single ' to help build a more clean word list
+            real_clean_html = re.sub(r'^[\'-]|[\'-]$|[-]{2,}|[\']{2,}|([\'-])\W|\W([\'-])|[^a-z\'\s-]+', ' ', clean_html.lower())
             # created ordered list of unique words from file
             word_list = sorted(set(real_clean_html.split()))
-            # find locations for each word and set dictionary with list of tuples for each key
-            for w in word_list:
-                if len(w) > 1:
-                    self.return_list[w] = []
-                    for word_loc in [p.start() for p in re.finditer(r'\s%s[\s|-|\.|,]'%(w),clean_html.lower())]:
-                        self.return_list[w].append((file_loc,word_loc))
             # now add to sqlite database
-            # TO DO
+            try:
+                conn = sqlite3.connect('capstone.db')
+                self.cursor = conn.cursor()
+                # find locations for each word and update database where necessary
+                for w in word_list:
+                    # We're only interested in words with more than one letter
+                    if len(w) > 1:
+                        # Check if word is already in database; if not, add it
+                        w_id = self.check_for_word(w)
+                        if w_id == False:
+                            self.cursor.execute("insert into words(word) values(?)",(w,))
+                            conn.commit()
+                            w_id = self.cursor.lastrowid
+                        # Get word location in document
+                        for word_loc in [p.start() for p in re.finditer(r'\s%s[\s|-|\.|,]'%(w),clean_html.lower())]:
+                            # First, check if this word instance is already in database
+                            self.cursor.execute("select url,loc from words_loc where words_id = ?",(w_id,))
+                            r = self.cursor.fetchone()
+                            # If that instance of word isn't recorded already, add to the database
+                            if r[1] != word_loc or r[0] != file_loc:
+                                self.cursor.execute("insert into words_loc(words_id,url,loc) values(?,?,?)",(w_id,file_loc,word_loc))
+                                conn.commit()
+                # Close connection and print affirmative message.
+                conn.close()
+                print "Index successfully updated for: %s"%(file_loc)
+            # Print an error if there's a problem with adding to database
+            except sqlite3.Error, e:
+                print "Error %s:"%(e.args[0])
+
+    def check_for_word(self,word):
+        '''Checks if a word is already recorded in database'''
+        self.cursor.execute("select id from words where word = ?",(word,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            return False
 
 
 class FileSnip(object):
@@ -58,6 +88,8 @@ class FileSnip(object):
         '''loads file, converts to string, and returns text within n spaces before and
          after word_position for display
          result = (file,word_position)'''
+         #for word_loc in [p.start() for p in re.finditer(r'\s%s[\s|-|\.|,]'%(w),clean_html.lower())]:
+         #     print loc,"Excerpt: ...",clean_html[loc-40:loc+40],"...\n"
         print result
 
 
@@ -122,7 +154,9 @@ class UserInput(object):
 class main(object):
 
     def __init__(self):
+
         ui = UserInput()
+
         while True:
             #ask for input
             ui.user_activity()
